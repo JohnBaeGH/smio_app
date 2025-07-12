@@ -110,18 +110,13 @@ def setup_chrome_driver():
             # Streamlit Cloud 환경에서의 설정
             print("Streamlit Cloud 환경 감지됨")
             
-            # Streamlit Cloud 및 Railway에서 사용 가능한 Chrome 바이너리 경로들
+            # Streamlit Cloud에서 사용 가능한 Chrome 바이너리 경로들
             chrome_paths = [
                 '/usr/bin/chromium-browser',
                 '/usr/bin/chromium',
                 '/usr/bin/google-chrome',
                 '/usr/bin/google-chrome-stable'
             ]
-            
-            # Railway 환경에서는 크롬 바이너리 경로를 명시적으로 설정
-            if is_railway:
-                options.binary_location = '/usr/bin/chromium'
-                print("Railway 환경에서 크롬 바이너리 경로 설정: /usr/bin/chromium")
             
             chrome_found = False
             for path in chrome_paths:
@@ -135,19 +130,14 @@ def setup_chrome_driver():
                 print("Chrome 바이너리를 찾을 수 없음")
                 return None
             
-            # Streamlit Cloud 및 Railway에서 ChromeDriver 경로 설정
+            # Streamlit Cloud에서 ChromeDriver 경로 설정
             chromedriver_paths = [
                 '/usr/bin/chromedriver',
                 '/usr/bin/chromium-chromedriver',
                 '/usr/local/bin/chromedriver'
             ]
             
-            # Railway 환경에서는 ChromeDriver 경로를 명시적으로 설정
-            if is_railway:
-                service = Service('/usr/bin/chromedriver')
-                print("Railway 환경에서 ChromeDriver 경로 설정: /usr/bin/chromedriver")
-            else:
-                service = None
+            service = None
             for path in chromedriver_paths:
                 if os.path.exists(path):
                     service = Service(path)
