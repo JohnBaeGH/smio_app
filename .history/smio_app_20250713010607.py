@@ -1165,41 +1165,8 @@ if st.session_state.url_processed:
         </div>
         """, unsafe_allow_html=True)
         
-        if not info.get("menu") or info["menu"][0]["name"] in ["메뉴 정보를 가져올 수 없습니다", "메뉴를 수동으로 입력해주세요"]:
-            st.warning("⚠️ 메뉴 정보를 자동으로 가져올 수 없습니다.")
-            
-            # 수동 메뉴 입력 옵션
-            with st.expander("📝 메뉴를 수동으로 입력하세요", expanded=True):
-                st.info("네이버 플레이스에서 메뉴를 확인하고 직접 입력해주세요.")
-                
-                # 메뉴 추가 폼
-                with st.form("manual_menu_form"):
-                    menu_name = st.text_input("🍽️ 메뉴 이름", key="manual_menu_name")
-                    menu_price = st.number_input("💰 가격 (원)", min_value=0, key="manual_menu_price")
-                    
-                    if st.form_submit_button("➕ 메뉴 추가"):
-                        if menu_name.strip():
-                            if "menu" not in st.session_state:
-                                st.session_state.menu = []
-                            st.session_state.menu.append({
-                                "name": menu_name.strip(),
-                                "price": menu_price if menu_price > 0 else None
-                            })
-                            st.success(f"✅ {menu_name.strip()} 메뉴가 추가되었습니다!")
-                            st.rerun()
-                
-                # 추가된 메뉴 목록
-                if hasattr(st.session_state, 'menu') and st.session_state.menu:
-                    st.write("**📋 추가된 메뉴:**")
-                    for i, menu in enumerate(st.session_state.menu):
-                        price_str = f"{menu['price']:,}원" if menu.get('price') else "가격 정보 없음"
-                        st.write(f"• {menu['name']} - {price_str}")
-                    
-                    if st.button("✅ 메뉴 입력 완료"):
-                        # 수동 입력된 메뉴로 restaurant_info 업데이트
-                        info["menu"] = st.session_state.menu
-                        st.success("✅ 메뉴 입력이 완료되었습니다!")
-                        st.rerun()
+        if not info.get("menu"):
+            st.warning("⚠️ 메뉴 정보를 불러올 수 없습니다. 다른 식당을 시도해보세요.")
         else:
             with st.form("order_form", clear_on_submit=True):
                 menu_names = []
