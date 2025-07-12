@@ -101,63 +101,22 @@ def setup_chrome_driver():
     options.add_argument('--memory-pressure-off')
     options.add_argument('--max_old_space_size=4096')
     
-    # Streamlit Cloud 환경 감지
-    is_streamlit_cloud = os.environ.get('STREAMLIT_SERVER_PORT') is not None
-    
     try:
-        if is_streamlit_cloud:
-            # Streamlit Cloud 환경에서의 설정
-            print("Streamlit Cloud 환경 감지됨")
-            
-            # Streamlit Cloud에서 사용 가능한 Chrome 바이너리 경로들
-            chrome_paths = [
-                '/usr/bin/chromium-browser',
-                '/usr/bin/chromium',
-                '/usr/bin/google-chrome',
-                '/usr/bin/google-chrome-stable'
-            ]
-            
-            chrome_found = False
-            for path in chrome_paths:
-                if os.path.exists(path):
-                    options.binary_location = path
-                    print(f"Chrome 바이너리 발견: {path}")
-                    chrome_found = True
-                    break
-            
-            if not chrome_found:
-                print("Chrome 바이너리를 찾을 수 없음")
-                return None
-            
-            # Streamlit Cloud에서 ChromeDriver 경로 설정
-            chromedriver_paths = [
-                '/usr/bin/chromedriver',
-                '/usr/bin/chromium-chromedriver',
-                '/usr/local/bin/chromedriver'
-            ]
-            
-            service = None
-            for path in chromedriver_paths:
-                if os.path.exists(path):
-                    service = Service(path)
-                    print(f"ChromeDriver 발견: {path}")
-                    break
-            
-            if not service:
-                # webdriver-manager로 자동 설치 시도
-                try:
-                    service = Service(ChromeDriverManager().install())
-                    print("webdriver-manager로 ChromeDriver 설치 성공")
-                except Exception as e:
-                    print(f"webdriver-manager 설치 실패: {e}")
-                    return None
-            
-        else:
-            # 로컬 환경에서는 기본 설정 사용
-            print("로컬 환경 감지됨")
+        # Windows 환경에서는 기본 Chrome 사용
+        if sys.platform.startswith('win'):
+            # Windows에서 ChromeDriver 자동 설치
             service = Service(ChromeDriverManager().install())
-        
-        driver = webdriver.Chrome(service=service, options=options)
+            driver = webdriver.Chrome(service=service, options=options)
+        else:
+            # Linux/Cloud 환경에서 chromium 사용
+            if os.path.exists('/usr/bin/chromium'):
+                options.binary_location = '/usr/bin/chromium'
+            elif os.path.exists('/usr/bin/chromium-browser'):
+                options.binary_location = '/usr/bin/chromium-browser'
+            
+            # ChromeDriver 설치 및 서비스 생성
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
         
         # 타임아웃 설정
         driver.set_page_load_timeout(30)
@@ -439,16 +398,7 @@ def scrape_restaurant_info(url):
         print(f"스크래핑 오류 발생: {e}")
         import traceback
         print(f"상세 오류 정보: {traceback.format_exc()}")
-        
-        # Streamlit Cloud 환경에서의 특별한 오류 처리
-        if "invalid session id" in str(e):
-            return {"error": "브라우저 세션이 만료되었습니다. 다시 시도해주세요."}
-        elif "ChromeDriver를 찾을 수 없습니다" in str(e):
-            return {"error": "브라우저 드라이버를 찾을 수 없습니다. 잠시 후 다시 시도해주세요."}
-        elif "timeout" in str(e).lower():
-            return {"error": "페이지 로딩 시간이 초과되었습니다. 네트워크 상태를 확인하고 다시 시도해주세요."}
-        else:
-            return {"error": f"스크래핑 중 오류가 발생했습니다: {str(e)}"}
+        return {"error": f"스크래핑 중 오류가 발생했습니다: {str(e)}"}
     
     finally:
         if driver:

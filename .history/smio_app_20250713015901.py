@@ -439,16 +439,7 @@ def scrape_restaurant_info(url):
         print(f"스크래핑 오류 발생: {e}")
         import traceback
         print(f"상세 오류 정보: {traceback.format_exc()}")
-        
-        # Streamlit Cloud 환경에서의 특별한 오류 처리
-        if "invalid session id" in str(e):
-            return {"error": "브라우저 세션이 만료되었습니다. 다시 시도해주세요."}
-        elif "ChromeDriver를 찾을 수 없습니다" in str(e):
-            return {"error": "브라우저 드라이버를 찾을 수 없습니다. 잠시 후 다시 시도해주세요."}
-        elif "timeout" in str(e).lower():
-            return {"error": "페이지 로딩 시간이 초과되었습니다. 네트워크 상태를 확인하고 다시 시도해주세요."}
-        else:
-            return {"error": f"스크래핑 중 오류가 발생했습니다: {str(e)}"}
+        return {"error": f"스크래핑 중 오류가 발생했습니다: {str(e)}"}
     
     finally:
         if driver:
