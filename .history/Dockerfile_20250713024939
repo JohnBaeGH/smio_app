@@ -37,9 +37,5 @@ COPY . .
 # 포트 노출 (Railway에서 동적으로 할당)
 EXPOSE $PORT
 
-# 헬스체크 추가
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:$PORT/_stcore/health || exit 1
-
 # Streamlit 앱 실행 명령어 (Railway의 $PORT 환경변수 사용)
-CMD ["sh", "-c", "Xvfb :99 -screen 0 1024x768x24 & streamlit run smio_app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true"] 
+CMD ["sh", "-c", "streamlit run smio_app.py --server.port=$PORT --server.address=0.0.0.0"] 

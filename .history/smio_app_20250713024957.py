@@ -146,38 +146,20 @@ def setup_chrome_driver():
                 '/usr/local/bin/chromedriver'
             ]
             
-            # ChromeDriver 서비스 설정
-            service = None
-            
             # Railway 환경에서는 ChromeDriver 경로를 명시적으로 설정
             if is_railway:
-                railway_driver_paths = [
-                    '/usr/bin/chromedriver',
-                    '/usr/bin/chromium-driver'
-                ]
-                for path in railway_driver_paths:
-                    if os.path.exists(path):
-                        service = Service(path)
-                        print(f"Railway 환경에서 ChromeDriver 발견: {path}")
-                        break
-                
-                if not service:
-                    print("Railway 환경에서 ChromeDriver를 찾을 수 없음, webdriver-manager 사용 시도")
-                    try:
-                        service = Service(ChromeDriverManager().install())
-                        print("webdriver-manager로 ChromeDriver 설치 성공")
-                    except Exception as e:
-                        print(f"webdriver-manager 실패: {e}")
+                service = Service('/usr/bin/chromedriver')
+                print("Railway 환경에서 ChromeDriver 경로 설정: /usr/bin/chromedriver")
             else:
-                # 로컬/Streamlit Cloud 환경에서 ChromeDriver 경로 찾기
-                for path in chromedriver_paths:
-                    if os.path.exists(path):
-                        service = Service(path)
-                        print(f"ChromeDriver 발견: {path}")
-                        break
+                service = None
+            for path in chromedriver_paths:
+                if os.path.exists(path):
+                    service = Service(path)
+                    print(f"ChromeDriver 발견: {path}")
+                    break
             
-            # 모든 경로에서 찾지 못한 경우 webdriver-manager 사용
             if not service:
+                # webdriver-manager로 자동 설치 시도
                 try:
                     service = Service(ChromeDriverManager().install())
                     print("webdriver-manager로 ChromeDriver 설치 성공")

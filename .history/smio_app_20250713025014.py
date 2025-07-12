@@ -146,11 +146,10 @@ def setup_chrome_driver():
                 '/usr/local/bin/chromedriver'
             ]
             
-            # ChromeDriver 서비스 설정
-            service = None
-            
             # Railway 환경에서는 ChromeDriver 경로를 명시적으로 설정
+            service = None
             if is_railway:
+                # Railway 환경에서 가능한 ChromeDriver 경로들 시도
                 railway_driver_paths = [
                     '/usr/bin/chromedriver',
                     '/usr/bin/chromium-driver'
@@ -166,18 +165,18 @@ def setup_chrome_driver():
                     try:
                         service = Service(ChromeDriverManager().install())
                         print("webdriver-manager로 ChromeDriver 설치 성공")
-                    except Exception as e:
+                                         except Exception as e:
                         print(f"webdriver-manager 실패: {e}")
             else:
-                # 로컬/Streamlit Cloud 환경에서 ChromeDriver 경로 찾기
+                # 로컬 환경에서 ChromeDriver 경로 찾기
                 for path in chromedriver_paths:
-                    if os.path.exists(path):
-                        service = Service(path)
-                        print(f"ChromeDriver 발견: {path}")
-                        break
+                if os.path.exists(path):
+                    service = Service(path)
+                    print(f"ChromeDriver 발견: {path}")
+                    break
             
-            # 모든 경로에서 찾지 못한 경우 webdriver-manager 사용
             if not service:
+                # webdriver-manager로 자동 설치 시도
                 try:
                     service = Service(ChromeDriverManager().install())
                     print("webdriver-manager로 ChromeDriver 설치 성공")
