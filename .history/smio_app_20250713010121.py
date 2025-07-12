@@ -1026,13 +1026,7 @@ if not st.session_state.url_processed:
                                 st.session_state.error_message = "올바른 네이버 플레이스 URL 형식이 아닙니다."
                                 st.error(st.session_state.error_message)
                             else:
-                                # 먼저 Selenium 기반 스크래핑 시도
                                 restaurant_data = scrape_restaurant_info(normalized_url)
-                                
-                                # 실패하면 requests 기반 스크래핑 시도
-                                if not restaurant_data or not restaurant_data.get("menu"):
-                                    st.warning("⚠️ Selenium 스크래핑 실패, 대체 방법 시도 중...")
-                                    restaurant_data = scrape_restaurant_info_simple(normalized_url)
                                 
                                 if restaurant_data and restaurant_data.get("menu"):
                                     st.session_state.restaurant_info = restaurant_data

@@ -67,51 +67,6 @@ def is_beverage(menu_name):
     menu_lower = menu_name.lower()
     return any(keyword in menu_lower for keyword in beverage_keywords)
 
-# --- 3-1. 대체 스크래핑 함수 (requests 기반) ---
-@st.cache_data
-def scrape_restaurant_info_simple(url):
-    """
-    requests와 BeautifulSoup을 사용한 간단한 스크래핑 (Streamlit Cloud용)
-    """
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36'
-        }
-        
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # 기본 정보 추출
-        restaurant_name = "가게 정보"
-        address = "주소 정보 없음"
-        phone = "전화번호 정보 없음"
-        parking_info = "주차 정보 없음"
-        
-        # 메뉴 정보는 기본값으로 설정
-        menu_list = [
-            {"name": "메뉴 정보를 가져올 수 없습니다", "price": None},
-            {"name": "네이버 플레이스에서 직접 확인해주세요", "price": None}
-        ]
-        
-        return {
-            "name": restaurant_name,
-            "type": "식당",
-            "rating": None,
-            "review_visitor": None,
-            "review_blog": None,
-            "short_desc": None,
-            "address": address,
-            "phone": phone,
-            "menu": menu_list,
-            "parking": parking_info
-        }
-        
-    except Exception as e:
-        print(f"간단한 스크래핑 오류: {e}")
-        return None
-
 # --- 3. 웹 스크래핑 기능: 네이버 플레이스에서 정보 가져오기 ---
 @st.cache_data
 def scrape_restaurant_info(url):
@@ -1026,13 +981,7 @@ if not st.session_state.url_processed:
                                 st.session_state.error_message = "올바른 네이버 플레이스 URL 형식이 아닙니다."
                                 st.error(st.session_state.error_message)
                             else:
-                                # 먼저 Selenium 기반 스크래핑 시도
                                 restaurant_data = scrape_restaurant_info(normalized_url)
-                                
-                                # 실패하면 requests 기반 스크래핑 시도
-                                if not restaurant_data or not restaurant_data.get("menu"):
-                                    st.warning("⚠️ Selenium 스크래핑 실패, 대체 방법 시도 중...")
-                                    restaurant_data = scrape_restaurant_info_simple(normalized_url)
                                 
                                 if restaurant_data and restaurant_data.get("menu"):
                                     st.session_state.restaurant_info = restaurant_data
