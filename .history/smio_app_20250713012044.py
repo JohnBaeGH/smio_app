@@ -1412,6 +1412,7 @@ if st.session_state.url_processed:
                             st.warning("⚠️ 삭제할 주문을 먼저 선택해주세요.")
     
     else:
+    else:
         # 데스크톱: 가로 배치 (기존 방식)
         col1, col2 = st.columns([0.6, 0.4], gap="large")
         
