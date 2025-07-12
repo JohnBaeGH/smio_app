@@ -15,7 +15,6 @@ RUN apt-get update && \
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 ENV PYTHONPATH=/app
-ENV DISPLAY=:99
 
 # 작업 디렉토리 설정
 WORKDIR /app
