@@ -129,9 +129,8 @@ def setup_chrome_driver():
             
             # Railway 환경에서는 크롬 바이너리 경로를 명시적으로 설정
             if is_railway:
-                chrome_binary = os.environ.get('CHROME_BIN', '/usr/bin/chromium')
-                options.binary_location = chrome_binary
-                print(f"Railway 환경에서 크롬 바이너리 경로 설정: {chrome_binary}")
+                options.binary_location = '/usr/bin/chromium'
+                print("Railway 환경에서 크롬 바이너리 경로 설정: /usr/bin/chromium")
             
             chrome_found = False
             for path in chrome_paths:
@@ -157,21 +156,15 @@ def setup_chrome_driver():
             
             # Railway 환경에서는 ChromeDriver 경로를 명시적으로 설정
             if is_railway:
-                # 환경변수에서 ChromeDriver 경로 확인
-                chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
-                if chromedriver_path and os.path.exists(chromedriver_path):
-                    service = Service(chromedriver_path)
-                    print(f"Railway 환경에서 환경변수 ChromeDriver 사용: {chromedriver_path}")
-                else:
-                    railway_driver_paths = [
-                        '/usr/bin/chromedriver',
-                        '/usr/bin/chromium-driver'
-                    ]
-                    for path in railway_driver_paths:
-                        if os.path.exists(path):
-                            service = Service(path)
-                            print(f"Railway 환경에서 ChromeDriver 발견: {path}")
-                            break
+                railway_driver_paths = [
+                    '/usr/bin/chromedriver',
+                    '/usr/bin/chromium-driver'
+                ]
+                for path in railway_driver_paths:
+                    if os.path.exists(path):
+                        service = Service(path)
+                        print(f"Railway 환경에서 ChromeDriver 발견: {path}")
+                        break
                 
                 if not service:
                     print("Railway 환경에서 ChromeDriver를 찾을 수 없음, webdriver-manager 사용 시도")
