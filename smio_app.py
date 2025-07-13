@@ -14,43 +14,167 @@ from selenium.webdriver.common.action_chains import ActionChains
 import urllib.parse
 import os
 import sys
+import json
+import uuid
+import hashlib
+from pathlib import Path
 
-# --- 1. URL 정규화 함수 ---
-def normalize_naver_place_url(url):
+# --- 1. 방 ID 및 데이터 관리 함수 ---
+def generate_room_id():
+    """고유한 방 ID를 생성합니다."""
+    return str(uuid.uuid4())[:8]
+
+def get_room_data_path(room_id):
+    """방 ID에 해당하는 데이터 파일 경로를 반환합니다."""
+    rooms_dir = Path("rooms")
+    rooms_dir.mkdir(exist_ok=True)
+    return rooms_dir / f"{room_id}.json"
+
+def save_room_data(room_id, data):
+    """방 데이터를 파일에 저장합니다."""
+    try:
+        file_path = get_room_data_path(room_id)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"방 데이터 저장 오류: {e}")
+        return False
+
+def load_room_data(room_id):
+    """방 데이터를 파일에서 불러옵니다."""
+    try:
+        file_path = get_room_data_path(room_id)
+        if file_path.exists():
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return None
+    except Exception as e:
+        print(f"방 데이터 로드 오류: {e}")
+        return None
+
+def get_current_room_id():
+    """현재 URL에서 방 ID를 가져옵니다."""
+    query_params = st.query_params
+    return query_params.get('room_id', None)
+
+def create_room_url(room_id):
+    """방 ID로 공유 가능한 URL을 생성합니다."""
+    # 현재 URL의 base를 가져와서 room_id 파라미터 추가
+    base_url = st.get_option("server.baseUrlPath") or ""
+    return f"{base_url}?room_id={room_id}"
+
+# --- 2. URL 추출 및 정규화 함수 ---
+def extract_naver_url(text):
+    """
+    텍스트에서 네이버 플레이스 관련 URL을 추출합니다.
+    """
+    import re
+    
+    print(f"URL 추출 시도 - 입력 텍스트: {text}")
+    
+    # 다양한 URL 패턴으로 시도
+    url_patterns = [
+        r'https?://[^\s\n\r]+',  # 기본 URL 패턴
+        r'https://naver\.me/[A-Za-z0-9]+',  # naver.me 특화
+        r'https://map\.naver\.com/[^\s\n\r]+',  # map.naver.com
+        r'https://m\.place\.naver\.com/[^\s\n\r]+',  # m.place.naver.com
+        r'http://[^\s\n\r]+naver[^\s\n\r]+',  # 기타 naver 도메인
+    ]
+    
+    found_urls = []
+    
+    # 모든 패턴으로 URL 찾기
+    for pattern in url_patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        found_urls.extend(matches)
+    
+    print(f"발견된 모든 URL: {found_urls}")
+    
+    # 네이버 관련 URL만 필터링
+    naver_keywords = ['naver.me', 'map.naver.com', 'place.naver.com', 'm.place.naver.com', 'm.map.naver.com', 'pcmap.place.naver.com']
+    
+    for url in found_urls:
+        for keyword in naver_keywords:
+            if keyword in url.lower():
+                # URL 정리 (끝의 불필요한 문자 제거)
+                cleaned_url = re.sub(r'[^\w\-\./:=?&%#]+$', '', url)
+                print(f"✅ 추출된 네이버 URL: {cleaned_url}")
+                return cleaned_url
+    
+    # 마지막으로 텍스트에서 naver.me 패턴 직접 검색
+    naver_me_pattern = r'naver\.me/[A-Za-z0-9]+'
+    naver_me_match = re.search(naver_me_pattern, text, re.IGNORECASE)
+    if naver_me_match:
+        full_url = f"https://{naver_me_match.group(0)}"
+        print(f"✅ naver.me 패턴으로 추출된 URL: {full_url}")
+        return full_url
+    
+    print(f"❌ 텍스트에서 네이버 URL을 찾을 수 없음: {text}")
+    return None
+
+def normalize_naver_place_url(url_input):
     """
     네이버 플레이스 URL을 메뉴 페이지 URL로 정규화합니다.
     """
     import re
     import requests
     
+    print(f"🔍 URL 정규화 시작 - 입력: {url_input}")
+    
+    # 먼저 텍스트에서 URL 추출
+    extracted_url = extract_naver_url(url_input)
+    if not extracted_url:
+        print(f"❌ URL 추출 실패")
+        return None
+    
+    url = extracted_url
+    print(f"📝 추출된 URL: {url}")
+    
     # 네이버 공유 링크인 경우 리다이렉트 처리
     if 'naver.me' in url:
         try:
-            print(f"네이버 공유 링크 감지: {url}")
-            response = requests.head(url, allow_redirects=True, timeout=10)
+            print(f"🔗 네이버 공유 링크 감지: {url}")
+            response = requests.head(url, allow_redirects=True, timeout=15)
             final_url = response.url
-            print(f"리다이렉트된 URL: {final_url}")
+            print(f"➡️ 리다이렉트된 URL: {final_url}")
             url = final_url
         except Exception as e:
-            print(f"리다이렉트 처리 오류: {e}")
-            return None
+            print(f"❌ 리다이렉트 처리 오류: {e}")
+            # 리다이렉트 실패해도 원본 URL로 계속 시도
+            pass
     
-    # URL에서 place ID 추출
-    place_id_match = re.search(r'place/(\d+)', url)
-    if not place_id_match:
+    # URL에서 place ID 추출 (다양한 패턴 시도)
+    place_id_patterns = [
+        r'place/(\d+)',           # 기본 패턴
+        r'restaurant/(\d+)',      # restaurant 패턴  
+        r'entry/place/(\d+)',     # entry/place 패턴
+        r'/(\d+)/?(?:\?|$)',      # URL 끝의 숫자 패턴
+    ]
+    
+    place_id = None
+    for pattern in place_id_patterns:
+        match = re.search(pattern, url)
+        if match:
+            place_id = match.group(1)
+            print(f"✅ Place ID 추출 성공: {place_id} (패턴: {pattern})")
+            break
+    
+    if not place_id:
+        print(f"❌ Place ID 추출 실패 - URL: {url}")
         return None
-    
-    place_id = place_id_match.group(1)
     
     # 이미 모바일 메뉴 URL인 경우
     if 'm.place.naver.com' in url and '/menu/' in url:
+        print(f"✅ 이미 모바일 메뉴 URL: {url}")
         return url
     
     # 네이버 맵 URL을 모바일 메뉴 URL로 변환
     mobile_menu_url = f"https://m.place.naver.com/restaurant/{place_id}/menu/list?entry=plt"
+    print(f"🎯 최종 변환된 URL: {mobile_menu_url}")
     return mobile_menu_url
 
-# --- 2. 음료 판단 함수 ---
+# --- 3. 음료 판단 함수 ---
 def is_beverage(menu_name):
     """
     메뉴 이름이 음료인지 판단합니다.
@@ -69,57 +193,53 @@ def is_beverage(menu_name):
     menu_lower = menu_name.lower()
     return any(keyword in menu_lower for keyword in beverage_keywords)
 
-# --- 3. Chrome WebDriver 설정 함수 ---
+# --- 4. Chrome WebDriver 설정 함수 ---
 def setup_chrome_driver():
     """
-    Streamlit Cloud 환경에 최적화된 Chrome WebDriver를 설정합니다.
+    속도 최적화된 Chrome WebDriver를 설정합니다.
     """
     options = webdriver.ChromeOptions()
     
-    # Streamlit Cloud 환경에서 필수 옵션들
+    # 필수 옵션들
     options.add_argument('--headless')  # 필수: GUI 없이 실행
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
-    options.add_argument('--disable-web-security')
-    options.add_argument('--disable-features=VizDisplayCompositor')
     options.add_argument('--disable-extensions')
     options.add_argument('--disable-plugins')
-    options.add_argument('--disable-images')
+    options.add_argument('--disable-images')  # 이미지 로딩 비활성화로 속도 향상
+    options.add_argument('--disable-javascript')  # JavaScript 비활성화로 속도 향상
+    options.add_argument('--disable-css')  # CSS 비활성화로 속도 향상
     options.add_argument('--disable-logging')
     options.add_argument('--log-level=3')
     options.add_argument('--silent')
+    options.add_argument('--window-size=1280,720')  # 작은 크기로 메모리 절약
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36")
+    
+    # 속도 최적화를 위한 옵션들
     options.add_argument('--disable-background-timer-throttling')
     options.add_argument('--disable-renderer-backgrounding')
     options.add_argument('--disable-backgrounding-occluded-windows')
-    options.add_argument('--disable-ipc-flooding-protection')
-    options.add_argument('--remote-debugging-port=9222')
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36")
+    options.add_argument('--aggressive-cache-discard')
+    options.add_argument('--disable-features=TranslateUI,VizDisplayCompositor')
+    options.add_argument('--disable-background-networking')
+    options.add_argument('--disable-sync')
+    options.add_argument('--disable-default-apps')
+    options.add_argument('--disable-web-security')
+    options.add_argument('--disable-features=VizDisplayCompositor')
     
     # 메모리 사용량 최적화
     options.add_argument('--memory-pressure-off')
-    options.add_argument('--max_old_space_size=4096')
+    options.add_argument('--max_old_space_size=2048')  # 메모리 사용량 줄임
     
-    # Streamlit Cloud 및 Railway 환경 감지
-    is_streamlit_cloud = os.environ.get('STREAMLIT_SERVER_PORT') is not None
-    is_railway = (os.environ.get('RAILWAY_ENVIRONMENT') is not None or 
-                  os.environ.get('RAILWAY_PROJECT_ID') is not None or
-                  os.environ.get('RAILWAY_SERVICE_ID') is not None or
-                  (os.environ.get('PORT') is not None and os.environ.get('CHROME_BIN') is not None))
-    
-    print(f"환경 감지: Streamlit Cloud={is_streamlit_cloud}, Railway={is_railway}")
-    print(f"환경변수 PORT: {os.environ.get('PORT')}")
-    print(f"환경변수 RAILWAY_ENVIRONMENT: {os.environ.get('RAILWAY_ENVIRONMENT')}")
-    print(f"환경변수 CHROME_BIN: {os.environ.get('CHROME_BIN')}")
-    print(f"환경변수 CHROMEDRIVER_PATH: {os.environ.get('CHROMEDRIVER_PATH')}")
+    # 단순화된 환경 감지 및 Chrome 설정
+    is_cloud = (os.environ.get('STREAMLIT_SERVER_PORT') is not None or 
+                os.environ.get('RAILWAY_ENVIRONMENT') is not None or
+                os.environ.get('PORT') is not None)
     
     try:
-        if is_streamlit_cloud or is_railway:
-            # Streamlit Cloud 환경에서의 설정
-            print("Streamlit Cloud 환경 감지됨")
-            
-            # Streamlit Cloud 및 Railway에서 사용 가능한 Chrome 바이너리 경로들
+        if is_cloud:
+            # 클라우드 환경에서 Chrome 바이너리 경로 설정
             chrome_paths = [
                 '/usr/bin/chromium-browser',
                 '/usr/bin/chromium',
@@ -127,17 +247,10 @@ def setup_chrome_driver():
                 '/usr/bin/google-chrome-stable'
             ]
             
-            # Railway 환경에서는 크롬 바이너리 경로를 명시적으로 설정
-            if is_railway:
-                chrome_binary = os.environ.get('CHROME_BIN', '/usr/bin/chromium')
-                options.binary_location = chrome_binary
-                print(f"Railway 환경에서 크롬 바이너리 경로 설정: {chrome_binary}")
-            
             chrome_found = False
             for path in chrome_paths:
                 if os.path.exists(path):
                     options.binary_location = path
-                    print(f"Chrome 바이너리 발견: {path}")
                     chrome_found = True
                     break
             
@@ -145,68 +258,34 @@ def setup_chrome_driver():
                 print("Chrome 바이너리를 찾을 수 없음")
                 return None
             
-            # Streamlit Cloud 및 Railway에서 ChromeDriver 경로 설정
+            # ChromeDriver 경로 설정
             chromedriver_paths = [
                 '/usr/bin/chromedriver',
                 '/usr/bin/chromium-chromedriver',
                 '/usr/local/bin/chromedriver'
             ]
             
-            # ChromeDriver 서비스 설정
             service = None
+            for path in chromedriver_paths:
+                if os.path.exists(path):
+                    service = Service(path)
+                    break
             
-            # Railway 환경에서는 ChromeDriver 경로를 명시적으로 설정
-            if is_railway:
-                # 환경변수에서 ChromeDriver 경로 확인
-                chromedriver_path = os.environ.get('CHROMEDRIVER_PATH')
-                if chromedriver_path and os.path.exists(chromedriver_path):
-                    service = Service(chromedriver_path)
-                    print(f"Railway 환경에서 환경변수 ChromeDriver 사용: {chromedriver_path}")
-                else:
-                    railway_driver_paths = [
-                        '/usr/bin/chromedriver',
-                        '/usr/bin/chromium-driver'
-                    ]
-                    for path in railway_driver_paths:
-                        if os.path.exists(path):
-                            service = Service(path)
-                            print(f"Railway 환경에서 ChromeDriver 발견: {path}")
-                            break
-                
-                if not service:
-                    print("Railway 환경에서 ChromeDriver를 찾을 수 없음, webdriver-manager 사용 시도")
-                    try:
-                        service = Service(ChromeDriverManager().install())
-                        print("webdriver-manager로 ChromeDriver 설치 성공")
-                    except Exception as e:
-                        print(f"webdriver-manager 실패: {e}")
-            else:
-                # 로컬/Streamlit Cloud 환경에서 ChromeDriver 경로 찾기
-                for path in chromedriver_paths:
-                    if os.path.exists(path):
-                        service = Service(path)
-                        print(f"ChromeDriver 발견: {path}")
-                        break
-            
-            # 모든 경로에서 찾지 못한 경우 webdriver-manager 사용
             if not service:
                 try:
                     service = Service(ChromeDriverManager().install())
-                    print("webdriver-manager로 ChromeDriver 설치 성공")
                 except Exception as e:
-                    print(f"webdriver-manager 설치 실패: {e}")
+                    print(f"webdriver-manager 실패: {e}")
                     return None
-            
         else:
             # 로컬 환경에서는 기본 설정 사용
-            print("로컬 환경 감지됨")
             service = Service(ChromeDriverManager().install())
         
         driver = webdriver.Chrome(service=service, options=options)
         
-        # 타임아웃 설정
-        driver.set_page_load_timeout(30)
-        driver.implicitly_wait(10)
+        # 짧은 타임아웃 설정으로 속도 향상
+        driver.set_page_load_timeout(15)  # 30초에서 15초로 단축
+        driver.implicitly_wait(5)  # 10초에서 5초로 단축
         
         return driver
         
@@ -214,7 +293,7 @@ def setup_chrome_driver():
         print(f"Chrome WebDriver 설정 오류: {e}")
         return None
 
-# --- 4. 웹 스크래핑 기능: 네이버 플레이스에서 정보 가져오기 ---
+# --- 5. 웹 스크래핑 기능: 네이버 플레이스에서 정보 가져오기 ---
 @st.cache_data(ttl=3600)  # 1시간 캐시
 def scrape_restaurant_info(url):
     """
@@ -293,15 +372,15 @@ def scrape_restaurant_info(url):
         else:
             print("메뉴 탭을 찾을 수 없음")
 
-        # 더보기 버튼 반복 클릭
+        # 더보기 버튼 클릭 (속도 최적화)
         print("더보기 버튼 클릭 시작...")
         click_count = 0
-        max_clicks = 20  # 클라우드 환경에서는 제한적으로
+        max_clicks = 5  # 클릭 횟수 제한으로 속도 향상
         
         while click_count < max_clicks:
             more_menu_btn = None
             
-            # 더보기 버튼 찾기
+            # 더보기 버튼 찾기 (간단한 방법으로)
             try:
                 more_buttons = driver.find_elements(By.CSS_SELECTOR, "span.TeItc")
                 for btn in more_buttons:
@@ -312,35 +391,15 @@ def scrape_restaurant_info(url):
                 pass
             
             if not more_menu_btn:
-                try:
-                    all_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '더보기')]")
-                    for element in all_elements:
-                        if element.is_displayed() and element.is_enabled():
-                            more_menu_btn = element
-                            break
-                except:
-                    pass
-            
-            if not more_menu_btn:
-                print("더보기 버튼이 더 이상 없음 - 모든 메뉴 로드 완료")
+                print("더보기 버튼이 더 이상 없음 - 메뉴 로드 완료")
                 break
             
-            print(f"더보기 버튼 {click_count+1}번째 클릭 시도...")
-            
             try:
-                before_click_count = len(driver.find_elements(By.CSS_SELECTOR, "div.place_section_content ul > li.E2jtL"))
                 driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", more_menu_btn)
-                time.sleep(1)
+                time.sleep(0.5)  # 대기 시간 단축
                 more_menu_btn.click()
-                time.sleep(2)
-                
-                after_click_count = len(driver.find_elements(By.CSS_SELECTOR, "div.place_section_content ul > li.E2jtL"))
-                if after_click_count > before_click_count:
-                    print(f"더보기 버튼 {click_count+1}번째 클릭 성공")
-                    click_count += 1
-                else:
-                    break
-                    
+                time.sleep(1)  # 대기 시간 단축
+                click_count += 1
             except Exception as e:
                 print(f"더보기 버튼 클릭 실패: {e}")
                 break
@@ -924,17 +983,74 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 세션 상태 초기화
+# --- 6. 세션 상태 및 방 관리 ---
 def initialize_session_state():
     """세션 상태를 안전하게 초기화합니다."""
-    if 'url_processed' not in st.session_state:
-        st.session_state.url_processed = False
-    if 'restaurant_info' not in st.session_state:
-        st.session_state.restaurant_info = None
-    if 'orders' not in st.session_state:
-        st.session_state.orders = []
+    # 현재 방 ID 확인
+    current_room_id = get_current_room_id()
+    
+    if 'current_room_id' not in st.session_state:
+        st.session_state.current_room_id = current_room_id
+    
+    # 즐겨찾기 자동 URL 처리
+    auto_url = st.query_params.get('auto_url', None)
+    if auto_url and not st.session_state.get('url_processed', False):
+        try:
+            normalized_url = normalize_naver_place_url(auto_url)
+            if normalized_url:
+                restaurant_data = scrape_restaurant_info(normalized_url)
+                if restaurant_data and restaurant_data.get("menu"):
+                    # 방 ID 생성 및 데이터 저장
+                    room_id = generate_room_id()
+                    st.session_state.current_room_id = room_id
+                    st.session_state.restaurant_info = restaurant_data
+                    st.session_state.url_processed = True
+                    st.session_state.orders = []
+                    
+                    # 방 데이터 저장
+                    sync_room_data()
+                    
+                    # URL 업데이트
+                    st.query_params["room_id"] = room_id
+                    if "auto_url" in st.query_params:
+                        del st.query_params["auto_url"]
+        except:
+            pass  # 실패해도 계속 진행
+    
+    # 방 ID가 URL에 있는 경우 해당 방 데이터 로드
+    if current_room_id:
+        room_data = load_room_data(current_room_id)
+        if room_data:
+            st.session_state.url_processed = True
+            st.session_state.restaurant_info = room_data.get('restaurant_info')
+            st.session_state.orders = room_data.get('orders', [])
+            st.session_state.current_room_id = current_room_id
+        else:
+            # 방 ID가 있지만 데이터가 없는 경우
+            st.session_state.url_processed = False
+            st.session_state.restaurant_info = None
+            st.session_state.orders = []
+    else:
+        # 방 ID가 없는 경우 (새로운 방 생성)
+        if 'url_processed' not in st.session_state:
+            st.session_state.url_processed = False
+        if 'restaurant_info' not in st.session_state:
+            st.session_state.restaurant_info = None
+        if 'orders' not in st.session_state:
+            st.session_state.orders = []
+    
     if 'error_message' not in st.session_state:
         st.session_state.error_message = None
+
+def sync_room_data():
+    """현재 세션 데이터를 방 파일에 동기화합니다."""
+    if st.session_state.get('current_room_id') and st.session_state.get('url_processed'):
+        room_data = {
+            'restaurant_info': st.session_state.restaurant_info,
+            'orders': st.session_state.orders,
+            'created_at': time.time()
+        }
+        save_room_data(st.session_state.current_room_id, room_data)
 
 # 세션 상태 초기화 실행
 initialize_session_state()
@@ -945,9 +1061,10 @@ if not st.session_state.url_processed:
     # 메인 헤더
     st.markdown("""
     <div class="main-header">
-        <div class="main-title">Smio</div>
-        <div class="main-subtitle">The smartest way to pre-order for your team</div>
-        <div style="margin-top: 1rem; font-size: 0.8rem; color: #cbd5e1; opacity: 0.8;">Made by John</div>
+        <div class="main-title" style="font-size: 4.5rem; font-weight: 700;">🍽️ SMIO</div>
+        <div class="main-subtitle" style="font-size: 1.8rem; font-weight: 500; margin-top: 0.5rem;">가장 스마트한 팀 주문 경험!</div>
+        <div style="margin-top: 1rem; font-size: 1rem; color: #cbd5e1; opacity: 0.9; line-height: 1.4;">스미오(Smio)는 '스마트 미리 오더'의 준말로, 복잡한 팀 주문을 미리 해결하는 가장 현명한 방법입니다.</div>
+        <div style="margin-top: 1.5rem; font-size: 0.8rem; color: #cbd5e1; opacity: 0.8;">Made by John</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -998,22 +1115,50 @@ if not st.session_state.url_processed:
             </div>
             """, unsafe_allow_html=True)
     
+    # 사용법 안내 섹션
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); padding: 1.5rem; border-radius: 12px; margin: 2rem 0; border: 1px solid #e2e8f0;">
+        <h3 style="color: #1e293b; margin-bottom: 1rem; font-size: 1.3rem; text-align: center;">📱 네이버 지도/앱에서 URL 복사하는 방법</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+            <div style="background: white; padding: 1rem; border-radius: 8px; border: 1px solid #cbd5e1;">
+                <h4 style="color: #3b82f6; margin-bottom: 0.5rem; font-size: 1rem;">🗺️ 네이버 지도 앱</h4>
+                <ol style="color: #64748b; font-size: 0.9rem; line-height: 1.5; margin: 0; padding-left: 1.2rem;">
+                    <li>음식점 검색 후 선택</li>
+                    <li>우측 상단 <strong>'공유'</strong> 버튼 클릭</li>
+                    <li><strong>'링크 복사'</strong> 선택</li>
+                    <li>아래에 붙여넣기</li>
+                </ol>
+            </div>
+            <div style="background: white; padding: 1rem; border-radius: 8px; border: 1px solid #cbd5e1;">
+                <h4 style="color: #10b981; margin-bottom: 0.5rem; font-size: 1rem;">📱 네이버 앱</h4>
+                <ol style="color: #64748b; font-size: 0.9rem; line-height: 1.5; margin: 0; padding-left: 1.2rem;">
+                    <li>음식점 검색 후 선택</li>
+                    <li>가게명 옆 <strong>'공유'</strong> 아이콘 클릭</li>
+                    <li><strong>'링크 복사'</strong> 선택</li>
+                    <li>아래에 붙여넣기</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     # URL 입력 섹션
     st.markdown("""
     <div style="text-align: center; margin: 2rem 0 1.5rem 0;">
         <h2 style="color: #1e293b; margin-bottom: 0.75rem; font-size: 1.5rem;">🎯 지금 바로 시작해보세요!</h2>
-        <p style="color: #64748b; font-size: 1rem; line-height: 1.4;">네이버 플레이스 URL을 입력하고 스마트한 팀 주문을 경험해보세요</p>
+        <p style="color: #64748b; font-size: 1rem; line-height: 1.4;">네이버 플레이스 URL이나 음식점 정보를 입력하고 스마트한 팀 주문을 경험해보세요</p>
     </div>
     """, unsafe_allow_html=True)
     
     # URL 입력 폼
     with st.container():
-        url_input = st.text_input(
-            "네이버 플레이스 URL을 입력하세요", 
-            placeholder="예: https://naver.me/FMAxDFTM",
+        url_input = st.text_area(
+            "네이버 플레이스 URL 또는 음식점 정보를 입력하세요", 
+            placeholder="예:\n• https://naver.me/FMAxDFTM\n• 드링킹랩 경기 화성시 왕배산1길 8-12 101호 https://naver.me/Fhf8xhoB\n• @https://naver.me/xP84E4Lr",
             label_visibility="collapsed",
             key="url_input",
-            help="네이버 지도나 플레이스 링크를 붙여넣으세요"
+            help="네이버 지도나 플레이스 링크를 붙여넣으세요. 음식점 이름, 주소가 함께 있어도 됩니다.",
+            height=100
         )
         
         # 모바일에서는 전체 너비로 버튼 표시
@@ -1025,18 +1170,29 @@ if not st.session_state.url_processed:
                     try:
                         normalized_url = normalize_naver_place_url(url_input)
                         if not normalized_url:
-                            st.error("❌ 올바른 네이버 플레이스 URL 형식이 아닙니다.")
+                            st.error("❌ 입력하신 내용에서 네이버 플레이스 URL을 찾을 수 없습니다.")
+                            st.info("💡 **사용 가능한 URL 형식:**\n- naver.me 단축링크\n- map.naver.com 일반 링크\n- m.place.naver.com 모바일 링크\n\n텍스트 중에 URL이 포함되어 있으면 자동으로 찾아줍니다!")
                         else:
                             restaurant_data = scrape_restaurant_info(normalized_url)
                             
                             if restaurant_data and "error" in restaurant_data:
                                 st.error(f"❌ {restaurant_data['error']}")
                             elif restaurant_data and restaurant_data.get("menu"):
+                                # 방 ID 생성 및 데이터 저장
+                                room_id = generate_room_id()
+                                st.session_state.current_room_id = room_id
                                 st.session_state.restaurant_info = restaurant_data
                                 st.session_state.url_processed = True
                                 st.session_state.orders = []
                                 st.session_state.error_message = None
+                                
+                                # 방 데이터 저장
+                                sync_room_data()
+                                
                                 st.success("✅ 주문방이 성공적으로 생성되었습니다!")
+                                
+                                # URL 업데이트
+                                st.query_params["room_id"] = room_id
                                 time.sleep(1)
                                 st.rerun()
                             else:
@@ -1045,6 +1201,39 @@ if not st.session_state.url_processed:
                     except Exception as e:
                         print(f"예상치 못한 오류: {e}")
                         st.error("❌ 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    
+    # 즐겨찾기 섹션
+    st.markdown("""
+    <div style="margin-top: 2rem;">
+        <h3 style="color: #1e293b; margin-bottom: 1rem; font-size: 1.3rem; text-align: center;">⭐ 근처 인기 맛집 바로가기</h3>
+        <p style="color: #64748b; font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem;">클릭하면 해당 가게로 바로 주문방이 생성됩니다</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 즐겨찾기 버튼들을 2열로 배치
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("☕ 매머드커피", use_container_width=True, type="secondary"):
+            st.session_state.url_input_value = "https://naver.me/FjbWj0iM"
+            st.query_params["auto_url"] = "https://naver.me/FjbWj0iM"
+            st.rerun()
+        
+        if st.button("🍲 다락골 소머리국밥", use_container_width=True, type="secondary"):
+            st.session_state.url_input_value = "https://naver.me/5qDj8gcj"
+            st.query_params["auto_url"] = "https://naver.me/5qDj8gcj"
+            st.rerun()
+    
+    with col2:
+        if st.button("🥘 중화요리 삼국지", use_container_width=True, type="secondary"):
+            st.session_state.url_input_value = "https://naver.me/GFByqJEd"
+            st.query_params["auto_url"] = "https://naver.me/GFByqJEd"
+            st.rerun()
+        
+        if st.button("🍜 선비 칼국수", use_container_width=True, type="secondary"):
+            st.session_state.url_input_value = "https://naver.me/GDamQwXw"
+            st.query_params["auto_url"] = "https://naver.me/GDamQwXw"
+            st.rerun()
 
 # --- 페이지 2: 주문 및 현황 페이지 (URL 입력 후) ---
 if st.session_state.url_processed:
@@ -1059,6 +1248,39 @@ if st.session_state.url_processed:
             st.session_state.orders = []
             st.rerun()
         st.stop()
+    
+    # 실시간 업데이트를 위한 자동 새로고침
+    if st.session_state.get('current_room_id'):
+        # 방 데이터 다시 로드하여 실시간 업데이트
+        room_data = load_room_data(st.session_state.current_room_id)
+        if room_data:
+            st.session_state.orders = room_data.get('orders', [])
+        
+        # 10초마다 자동 새로고침
+        time.sleep(0.1)  # 너무 빠른 새로고침 방지
+        st.markdown("""
+        <script>
+        setTimeout(function() {
+            window.parent.location.reload();
+        }, 10000);
+        </script>
+        """, unsafe_allow_html=True)
+    
+    # 방 공유 링크 표시
+    if st.session_state.get('current_room_id'):
+        current_url = f"http://localhost:8501/?room_id={st.session_state.current_room_id}"
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; text-align: center;">
+            <div style="color: white; font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">🔗 주문방 공유 링크</div>
+            <div style="background: rgba(255,255,255,0.2); padding: 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.9rem; color: white; word-break: break-all;">
+                {current_url}
+            </div>
+            <div style="color: rgba(255,255,255,0.8); font-size: 0.8rem; margin-top: 0.5rem;">
+                이 링크를 공유하면 다른 사람들이 같은 주문방에 접속할 수 있습니다<br>
+                💫 실시간 업데이트: 10초마다 자동으로 새로고침됩니다
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     # 레스토랑 정보 헤더
     st.markdown(f"""
@@ -1169,6 +1391,10 @@ if st.session_state.url_processed:
                                 "special_request": special_request.strip() if special_request else None
                             }
                             st.session_state.orders.append(order_info)
+                            
+                            # 방 데이터 동기화
+                            sync_room_data()
+                            
                             st.success(f"✅ {participant_name.strip()}님의 주문이 추가되었습니다!")
                             time.sleep(1)
                             st.rerun()
@@ -1236,6 +1462,10 @@ if st.session_state.url_processed:
                     if st.button("🗑️ 선택한 주문 삭제", use_container_width=True):
                         if order_to_delete_index is not None:
                             deleted_order = st.session_state.orders.pop(order_to_delete_index)
+                            
+                            # 방 데이터 동기화
+                            sync_room_data()
+                            
                             st.success(f"✅ {deleted_order['name']}님의 주문이 삭제되었습니다!")
                             time.sleep(1)
                             st.rerun()
@@ -1309,4 +1539,10 @@ if st.session_state.url_processed:
         st.session_state.url_processed = False
         st.session_state.restaurant_info = None
         st.session_state.orders = []
+        st.session_state.current_room_id = None
+        
+        # URL에서 room_id 제거
+        if "room_id" in st.query_params:
+            del st.query_params["room_id"]
+        
         st.rerun()
