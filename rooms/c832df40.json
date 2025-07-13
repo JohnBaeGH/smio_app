@@ -1,0 +1,61 @@
+{
+  "restaurant_info": {
+    "name": "다락골 소머리국밥 방교본점",
+    "type": "한식",
+    "rating": null,
+    "review_visitor": null,
+    "review_blog": null,
+    "short_desc": null,
+    "address": "경기 화성시 동탄기흥로 147-15 101호-103호",
+    "phone": "0507-1374-3450",
+    "menu": [
+      {
+        "name": "소머리국밥",
+        "price": 11000
+      },
+      {
+        "name": "얼큰소머리국밥",
+        "price": 12000
+      },
+      {
+        "name": "설렁탕",
+        "price": 9000
+      },
+      {
+        "name": "한우소머리수육 2인",
+        "price": 30000
+      },
+      {
+        "name": "도가니수육 2~3인",
+        "price": 50000
+      },
+      {
+        "name": "얼큰소내장탕",
+        "price": 11000
+      },
+      {
+        "name": "우사골 순대국",
+        "price": 10000
+      },
+      {
+        "name": "우사골 얼큰순대국",
+        "price": 11000
+      },
+      {
+        "name": "우사골 돼지국밥",
+        "price": 11000
+      },
+      {
+        "name": "도가니탕",
+        "price": 19000
+      },
+      {
+        "name": "왕갈비탕",
+        "price": 18000
+      }
+    ],
+    "parking": "주차 정보 없음"
+  },
+  "orders": [],
+  "created_at": 1752425267.3297844
+}
