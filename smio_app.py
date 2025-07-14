@@ -1497,7 +1497,7 @@ if st.session_state.url_processed:
     
     # 방 공유 링크 표시
     if st.session_state.get('current_room_id'):
-        current_url = f"http://localhost:8501/?room_id={st.session_state.current_room_id}"
+        current_url = create_room_url(st.session_state.current_room_id)
         
         # 공유 링크 헤더
         st.markdown("""
