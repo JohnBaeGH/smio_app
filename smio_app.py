@@ -1379,11 +1379,32 @@ if not st.session_state.url_processed:
     </div>
     """, unsafe_allow_html=True)
     
-    # URL 입력 폼
+    # URL 입력 폼 - 스타일 개선
+    st.markdown("""
+    <style>
+    .stTextArea > div > div > textarea {
+        background-color: #f8fafc !important;
+        border: 2px solid #e2e8f0 !important;
+        border-radius: 8px !important;
+        color: #1e293b !important;
+        font-size: 14px !important;
+        padding: 12px !important;
+    }
+    .stTextArea > div > div > textarea:focus {
+        border-color: #3b82f6 !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+    }
+    .stTextArea > div > div > textarea::placeholder {
+        color: #94a3b8 !important;
+        font-style: italic !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     with st.container():
         url_input = st.text_area(
             "네이버 플레이스 URL 또는 음식점 정보를 입력하세요", 
-            placeholder="예:\n• https://naver.me/FMAxDFTM\n• 드링킹랩 경기 화성시 왕배산1길 8-12 101호 https://naver.me/Fhf8xhoB\n• @https://naver.me/xP84E4Lr",
+            placeholder="여기에 붙여넣어주세요\n\n• https://naver.me/FMAxDFTM\n• 드링킹랩 경기 화성시 왕배산1길 8-12 101호 https://naver.me/Fhf8xhoB\n• @https://naver.me/xP84E4Lr",
             label_visibility="collapsed",
             key="url_input",
             help="네이버 지도나 플레이스 링크를 붙여넣으세요. 음식점 이름, 주소가 함께 있어도 됩니다.",
