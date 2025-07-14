@@ -18,6 +18,7 @@ import json
 import uuid
 import hashlib
 from pathlib import Path
+import datetime
 
 # --- 1. 방 ID 및 데이터 관리 함수 ---
 def generate_room_id():
@@ -63,6 +64,155 @@ def create_room_url(room_id):
     # 현재 URL의 base를 가져와서 room_id 파라미터 추가
     base_url = st.get_option("server.baseUrlPath") or ""
     return f"{base_url}?room_id={room_id}"
+
+# --- 로그 관리 함수 ---
+def get_log_file_path():
+    """로그 파일 경로를 반환합니다."""
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+    today = datetime.datetime.now().strftime("%Y-%m")
+    return logs_dir / f"orders_{today}.json"
+
+def save_order_log(room_id, restaurant_info, order_info):
+    """주문 로그를 파일에 저장합니다."""
+    try:
+        now = datetime.datetime.now()
+        restaurant_name = restaurant_info.get("name", "알 수 없는 음식점")
+        
+        log_entry = {
+            "timestamp": now.isoformat(),
+            "room_id": room_id,
+            "restaurant": {
+                "name": restaurant_name,
+                "place_id": restaurant_info.get("place_id", ""),
+                "address": restaurant_info.get("address", ""),
+                "category": restaurant_info.get("category", "")
+            },
+            "order": {
+                "user_name": order_info.get("name", ""),
+                "menu": order_info.get("menu", ""),
+                "quantity": order_info.get("quantity", 0),
+                "price": order_info.get("price", 0),
+                "beverage_option": order_info.get("beverage_option", ""),
+                "special_request": order_info.get("special_request", "")
+            },
+            "session_info": {
+                "user_agent": st.context.headers.get("User-Agent", "") if hasattr(st.context, 'headers') else "",
+                "ip_hash": hashlib.md5(str(st.context.headers.get("X-Forwarded-For", "unknown")).encode()).hexdigest()[:8] if hasattr(st.context, 'headers') else ""
+            }
+        }
+        
+        log_file = get_log_file_path()
+        
+        # 기존 로그 읽기
+        existing_logs = []
+        if log_file.exists():
+            with open(log_file, 'r', encoding='utf-8') as f:
+                try:
+                    existing_logs = json.load(f)
+                except json.JSONDecodeError:
+                    existing_logs = []
+        
+        # 새 로그 추가
+        existing_logs.append(log_entry)
+        
+        # 로그 저장
+        with open(log_file, 'w', encoding='utf-8') as f:
+            json.dump(existing_logs, f, ensure_ascii=False, indent=2)
+        
+        return True
+    except Exception as e:
+        print(f"로그 저장 오류: {e}")
+        return False
+
+def load_order_logs(year_month=None):
+    """주문 로그를 불러옵니다."""
+    try:
+        if year_month:
+            log_file = Path("logs") / f"orders_{year_month}.json"
+        else:
+            log_file = get_log_file_path()
+        
+        if log_file.exists():
+            with open(log_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except Exception as e:
+        print(f"로그 로드 오류: {e}")
+        return []
+
+def get_available_log_months():
+    """사용 가능한 로그 월 목록을 반환합니다."""
+    try:
+        logs_dir = Path("logs")
+        if not logs_dir.exists():
+            return []
+        
+        months = []
+        for file in logs_dir.glob("orders_*.json"):
+            month = file.stem.replace("orders_", "")
+            months.append(month)
+        
+        return sorted(months, reverse=True)
+    except Exception as e:
+        print(f"로그 월 조회 오류: {e}")
+        return []
+
+def delete_log_entry(month, timestamp):
+    """특정 로그 항목을 삭제합니다."""
+    try:
+        log_file = Path("logs") / f"orders_{month}.json"
+        if not log_file.exists():
+            return False
+        
+        with open(log_file, 'r', encoding='utf-8') as f:
+            logs = json.load(f)
+        
+        # 해당 timestamp의 로그 제거
+        logs = [log for log in logs if log['timestamp'] != timestamp]
+        
+        # 파일 다시 저장
+        with open(log_file, 'w', encoding='utf-8') as f:
+            json.dump(logs, f, ensure_ascii=False, indent=2)
+        
+        return True
+    except Exception as e:
+        print(f"로그 삭제 오류: {e}")
+        return False
+
+def delete_all_logs_for_month(month):
+    """특정 월의 모든 로그를 삭제합니다."""
+    try:
+        log_file = Path("logs") / f"orders_{month}.json"
+        if log_file.exists():
+            log_file.unlink()
+            return True
+        return False
+    except Exception as e:
+        print(f"월별 로그 삭제 오류: {e}")
+        return False
+
+def delete_logs_by_room(month, room_id):
+    """특정 방의 모든 로그를 삭제합니다."""
+    try:
+        log_file = Path("logs") / f"orders_{month}.json"
+        if not log_file.exists():
+            return False
+        
+        with open(log_file, 'r', encoding='utf-8') as f:
+            logs = json.load(f)
+        
+        # 해당 room_id의 로그들 제거
+        logs = [log for log in logs if log['room_id'] != room_id]
+        
+        # 파일 다시 저장
+        with open(log_file, 'w', encoding='utf-8') as f:
+            json.dump(logs, f, ensure_ascii=False, indent=2)
+        
+        return True
+    except Exception as e:
+        print(f"방별 로그 삭제 오류: {e}")
+        return False
 
 # --- 2. URL 추출 및 정규화 함수 ---
 def extract_naver_url(text):
@@ -513,10 +663,33 @@ def scrape_restaurant_info(url):
                 if phone_tag:
                     phone = phone_tag.get_text(strip=True)
                 
-                # 가게 이름
-                name_tag = home_soup.select_one("div.zD5Nm div.LylZZ.v8v5j span.GHAhO")
-                if name_tag:
-                    restaurant_name = name_tag.text.strip()
+                # 가게 이름 - 여러 셀렉터 시도
+                name_selectors = [
+                    "div.zD5Nm div.LylZZ.v8v5j span.GHAhO",  # 기존 셀렉터
+                    "span.GHAhO",  # 클래스만
+                    "h1",  # 헤더 태그
+                    "h2", 
+                    ".restaurant_title",
+                    ".place_name",
+                    "[data-type='title']",
+                    ".title",
+                    ".name",
+                    "div[class*='title'] span",
+                    "div[class*='name'] span",
+                    "span[class*='title']",
+                    "span[class*='name']",
+                    ".GHAhO"
+                ]
+                
+                for selector in name_selectors:
+                    try:
+                        name_tag = home_soup.select_one(selector)
+                        if name_tag and name_tag.text.strip():
+                            restaurant_name = name_tag.text.strip()
+                            print(f"✅ 가게이름 발견: {restaurant_name} (셀렉터: {selector})")
+                            break
+                    except:
+                        continue
                 
                 # 업종
                 type_tag = home_soup.select_one("div.zD5Nm div.LylZZ.v8v5j span.lnJFt")
@@ -1058,15 +1231,71 @@ initialize_session_state()
 # --- 페이지 1: 랜딩 페이지 (URL 입력 전) ---
 if not st.session_state.url_processed:
     
-    # 메인 헤더
-    st.markdown("""
-    <div class="main-header">
-        <div class="main-title" style="font-size: 4.5rem; font-weight: 700;">🍽️ SMIO</div>
-        <div class="main-subtitle" style="font-size: 1.8rem; font-weight: 500; margin-top: 0.5rem;">가장 스마트한 팀 주문 경험!</div>
-        <div style="margin-top: 1rem; font-size: 1rem; color: #cbd5e1; opacity: 0.9; line-height: 1.4;">스미오(Smio)는 '스마트 미리 오더'의 준말로, 복잡한 팀 주문을 미리 해결하는 가장 현명한 방법입니다.</div>
-        <div style="margin-top: 1.5rem; font-size: 0.8rem; color: #cbd5e1; opacity: 0.8;">Made by John</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # 메인 헤더 (관리자 아이콘 포함)
+    header_col1, header_col2 = st.columns([10, 1])
+    
+    with header_col1:
+        st.markdown("""
+        <div class="main-header">
+            <div class="main-title" style="font-size: 4.5rem; font-weight: 700;">🍽️ SMIO</div>
+            <div class="main-subtitle" style="font-size: 1.8rem; font-weight: 500; margin-top: 0.5rem;">가장 스마트한 팀 주문 경험!</div>
+            <div style="margin-top: 1rem; font-size: 1rem; color: #cbd5e1; opacity: 0.9; line-height: 1.4;">스미오(Smio)는 '스마트 미리 오더'의 준말로, 복잡한 팀 주문을 미리 해결하는 가장 현명한 방법입니다.</div>
+            <div style="margin-top: 1.5rem; font-size: 0.8rem; color: #cbd5e1; opacity: 0.8;">Made by John</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with header_col2:
+        # 숨겨진 관리자 아이콘 (우측 상단)
+        st.markdown("""
+        <div style="text-align: right; padding-top: 1rem;">
+            <div style="position: relative;">
+        """, unsafe_allow_html=True)
+        
+        if st.button("⚙️", help="관리자", key="admin_icon", use_container_width=False):
+            st.session_state.show_admin_login = True
+        
+        st.markdown("</div></div>", unsafe_allow_html=True)
+    
+    # 관리자 로그인 (간단한 방식)
+    if st.session_state.get('show_admin_login'):
+        st.markdown("---")
+        
+        # 간단한 로그인 박스
+        with st.container():
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); padding: 2rem; border-radius: 12px; margin: 1rem 0; text-align: center; color: white;">
+                <h3 style="margin-bottom: 1rem; color: white;">🔐 관리자 로그인</h3>
+                <p style="margin-bottom: 1.5rem; opacity: 0.9;">관리자 권한이 필요합니다</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            with st.form("admin_login_form", clear_on_submit=True):
+                password = st.text_input("🔑 비밀번호", type="password", placeholder="관리자 비밀번호를 입력하세요")
+                
+                col1, col2, col3 = st.columns([1, 1, 1])
+                with col1:
+                    pass
+                with col2:
+                    login_clicked = st.form_submit_button("🔓 로그인", use_container_width=True, type="primary")
+                with col3:
+                    cancel_clicked = st.form_submit_button("❌ 취소", use_container_width=True)
+                
+                if login_clicked:
+                    if password == "smio2024admin":
+                        st.session_state.admin_authenticated = True
+                        st.session_state.show_admin_login = False
+                        st.session_state.admin_mode = True
+                        st.balloons()
+                        st.success("✅ 관리자 로그인 성공! 잠시만 기다려주세요...")
+                        st.rerun()
+                    else:
+                        st.error("❌ 비밀번호가 틀렸습니다.")
+                
+                if cancel_clicked:
+                    st.session_state.show_admin_login = False
+                    st.rerun()
+        
+        st.markdown("---")
     
     # 소개 섹션 - 모바일에서는 단일 컬럼
     if st.container():
@@ -1269,15 +1498,124 @@ if st.session_state.url_processed:
     # 방 공유 링크 표시
     if st.session_state.get('current_room_id'):
         current_url = f"http://localhost:8501/?room_id={st.session_state.current_room_id}"
-        st.markdown(f"""
-        <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; text-align: center;">
+        
+        # 공유 링크 헤더
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 1rem 1rem 0.5rem 1rem; border-radius: 8px 8px 0 0; margin-bottom: 0; text-align: center;">
             <div style="color: white; font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">🔗 주문방 공유 링크</div>
-            <div style="background: rgba(255,255,255,0.2); padding: 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.9rem; color: white; word-break: break-all;">
-                {current_url}
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # URL 표시 및 복사 버튼을 같은 행에 배치
+        col1, col2 = st.columns([4, 1])
+        
+        with col1:
+            st.text_input(
+                label="주문방 URL",
+                value=current_url,
+                key="share_url",
+                label_visibility="collapsed",
+                disabled=True,
+                help="URL을 선택하고 Ctrl+C로 복사하세요"
+            )
+        
+        with col2:
+            # JavaScript 클립보드 복사 기능이 포함된 버튼
+            copy_button_html = f"""
+            <div style="margin-top: 0px;">
+                <button onclick="copyToClipboard()" 
+                        style="background: #10b981; color: white; border: none; 
+                               padding: 8px 12px; border-radius: 6px; cursor: pointer; 
+                               font-size: 14px; font-weight: 500; width: 100%; height: 40px;
+                               transition: background-color 0.2s;"
+                        onmouseover="this.style.backgroundColor='#059669'"
+                        onmouseout="this.style.backgroundColor='#10b981'">
+                    📋 복사
+                </button>
             </div>
-            <div style="color: rgba(255,255,255,0.8); font-size: 0.8rem; margin-top: 0.5rem;">
-                이 링크를 공유하면 다른 사람들이 같은 주문방에 접속할 수 있습니다<br>
-                💫 실시간 업데이트: 10초마다 자동으로 새로고침됩니다
+            
+            <script>
+                function copyToClipboard() {{
+                    const url = "{current_url}";
+                    
+                    // 최신 Clipboard API 시도
+                    if (navigator.clipboard && navigator.clipboard.writeText) {{
+                        navigator.clipboard.writeText(url).then(function() {{
+                            showCopySuccess();
+                        }}).catch(function(err) {{
+                            console.log('Clipboard API 실패:', err);
+                            fallbackCopy(url);
+                        }});
+                    }} else {{
+                        // Fallback 방법
+                        fallbackCopy(url);
+                    }}
+                }}
+                
+                function fallbackCopy(text) {{
+                    // 임시 텍스트 영역 생성
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-999999px";
+                    textArea.style.top = "-999999px";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    
+                    try {{
+                        const result = document.execCommand('copy');
+                        if (result) {{
+                            showCopySuccess();
+                        }} else {{
+                            showCopyError();
+                        }}
+                    }} catch (err) {{
+                        console.log('복사 실패:', err);
+                        showCopyError();
+                    }} finally {{
+                        document.body.removeChild(textArea);
+                    }}
+                }}
+                
+                function showCopySuccess() {{
+                    // 성공 메시지 표시
+                    const button = event.target;
+                    const originalText = button.innerHTML;
+                    button.innerHTML = "✅ 복사됨!";
+                    button.style.backgroundColor = "#059669";
+                    setTimeout(() => {{
+                        button.innerHTML = originalText;
+                        button.style.backgroundColor = "#10b981";
+                    }}, 2000);
+                }}
+                
+                function showCopyError() {{
+                    // 실패 메시지 표시
+                    const button = event.target;
+                    const originalText = button.innerHTML;
+                    button.innerHTML = "❌ 실패";
+                    button.style.backgroundColor = "#dc2626";
+                    setTimeout(() => {{
+                        button.innerHTML = originalText;
+                        button.style.backgroundColor = "#10b981";
+                    }}, 2000);
+                    
+                    // 수동 복사 안내
+                    alert("자동 복사가 실패했습니다.\\n위의 URL을 선택하고 Ctrl+C로 복사해주세요.");
+                }}
+            </script>
+            """
+            
+            st.components.v1.html(copy_button_html, height=50)
+        
+        # 안내 메시지
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 0.5rem 1rem 1rem 1rem; border-radius: 0 0 8px 8px; margin-top: 0; text-align: center;">
+            <div style="color: rgba(255,255,255,0.9); font-size: 0.85rem; line-height: 1.4;">
+                📋 <strong>복사 방법:</strong> '📋 복사' 버튼 클릭 또는 URL 박스 클릭 → Ctrl+A → Ctrl+C<br>
+                💫 실시간 업데이트: 10초마다 자동으로 새로고침됩니다<br>
+                👥 이 링크를 공유하면 다른 사람들이 같은 주문방에 접속할 수 있습니다
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1394,6 +1732,14 @@ if st.session_state.url_processed:
                             
                             # 방 데이터 동기화
                             sync_room_data()
+                            
+                            # 주문 로그 저장
+                            if st.session_state.get('current_room_id') and st.session_state.get('restaurant_info'):
+                                save_order_log(
+                                    st.session_state.current_room_id,
+                                    st.session_state.restaurant_info,
+                                    order_info
+                                )
                             
                             st.success(f"✅ {participant_name.strip()}님의 주문이 추가되었습니다!")
                             time.sleep(1)
@@ -1546,3 +1892,200 @@ if st.session_state.url_processed:
             del st.query_params["room_id"]
         
         st.rerun()
+
+# --- 관리자 페이지 함수 ---
+def show_admin_page():
+    """관리자 페이지를 표시합니다."""
+    st.title("🔐 SMIO 관리자 페이지")
+    
+    # 인증된 관리자 페이지 헤더
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.write("### 📊 주문 로그 조회 및 관리")
+    with col2:
+        if st.button("🚪 로그아웃"):
+            st.session_state.admin_authenticated = False
+            st.session_state.admin_mode = False
+            st.session_state.show_admin_login = False
+            st.success("✅ 로그아웃되었습니다.")
+            st.rerun()
+    
+    # 월별 로그 선택
+    available_months = get_available_log_months()
+    if not available_months:
+        st.info("📭 아직 기록된 로그가 없습니다.")
+        return
+    
+    selected_month = st.selectbox(
+        "📅 조회할 월 선택", 
+        available_months,
+        format_func=lambda x: f"{x[:4]}년 {x[5:]}월"
+    )
+    
+    # 로그 불러오기
+    logs = load_order_logs(selected_month)
+    
+    if not logs:
+        st.info(f"📭 {selected_month}에 기록된 로그가 없습니다.")
+        return
+    
+    # 필터링 옵션
+    st.write("### 🔍 필터링 옵션")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # 음식점별 필터
+        restaurants = list(set([log['restaurant']['name'] for log in logs]))
+        selected_restaurant = st.selectbox("🏪 음식점 선택", ["전체"] + restaurants)
+    
+    with col2:
+        # 사용자별 필터
+        users = list(set([log['order']['user_name'] for log in logs if log['order']['user_name']]))
+        selected_user = st.selectbox("👤 사용자 선택", ["전체"] + users)
+    
+    with col3:
+        # 방별 필터 (방 ID로 표시)
+        rooms = list(set([log['room_id'] for log in logs]))
+        selected_room = st.selectbox("🏠 방 ID 선택", ["전체"] + [f"{room[:8]}" for room in rooms])
+    
+    # 로그 필터링
+    filtered_logs = logs
+    if selected_restaurant != "전체":
+        filtered_logs = [log for log in filtered_logs if log['restaurant']['name'] == selected_restaurant]
+    if selected_user != "전체":
+        filtered_logs = [log for log in filtered_logs if log['order']['user_name'] == selected_user]
+    if selected_room != "전체":
+        # room_id로 필터링 (앞 8자리로 비교)
+        filtered_logs = [log for log in filtered_logs if log['room_id'][:8] == selected_room]
+    
+    # 통계 정보
+    st.write("### 📈 통계 정보")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("총 주문 수", len(filtered_logs))
+    with col2:
+        total_amount = sum([log['order']['price'] for log in filtered_logs])
+        st.metric("총 주문 금액", f"{total_amount:,}원")
+    with col3:
+        unique_users = len(set([log['order']['user_name'] for log in filtered_logs if log['order']['user_name']]))
+        st.metric("사용자 수", f"{unique_users}명")
+    with col4:
+        unique_rooms = len(set([log['room_id'] for log in filtered_logs]))
+        st.metric("방 개수", f"{unique_rooms}개")
+    
+    # 로그 삭제 기능
+    st.write("### 🗑️ 로그 관리")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("⚠️ 선택한 월 전체 삭제", use_container_width=True):
+            if st.session_state.get('confirm_delete_month') != selected_month:
+                st.session_state.confirm_delete_month = selected_month
+                st.warning(f"⚠️ {selected_month} 월의 모든 로그가 삭제됩니다. 다시 클릭하여 확인하세요.")
+            else:
+                if delete_all_logs_for_month(selected_month):
+                    st.success(f"✅ {selected_month} 월 로그가 모두 삭제되었습니다.")
+                    st.session_state.confirm_delete_month = None
+                    st.rerun()
+                else:
+                    st.error("❌ 삭제 실패")
+    
+    with col2:
+        if selected_room != "전체" and st.button("🏠 선택한 방 로그 삭제", use_container_width=True):
+            # 실제 room_id 찾기
+            actual_room_id = None
+            for log in logs:
+                if log['room_id'][:8] == selected_room:
+                    actual_room_id = log['room_id']
+                    break
+            
+            if actual_room_id and delete_logs_by_room(selected_month, actual_room_id):
+                st.success(f"✅ 방 {selected_room}의 로그가 삭제되었습니다.")
+                st.rerun()
+            else:
+                st.error("❌ 삭제 실패")
+    
+    with col3:
+        if st.button("🔄 새로고침", use_container_width=True):
+            st.rerun()
+
+    # 로그 테이블 표시
+    st.write("### 📋 주문 내역")
+    
+    if filtered_logs:
+        # 개별 삭제 기능이 포함된 테이블
+        for i, log in enumerate(filtered_logs):
+            with st.container():
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    timestamp = datetime.datetime.fromisoformat(log['timestamp']).strftime("%m-%d %H:%M")
+                    st.markdown(f"""
+                    <div style="background: white; padding: 1rem; margin: 0.5rem 0; border-radius: 8px; border: 1px solid #e2e8f0;">
+                        <div style="font-weight: 600; color: #1e293b; margin-bottom: 0.5rem;">
+                            {timestamp} | {log['restaurant']['name']} | 방ID: {log['room_id'][:8]}
+                        </div>
+                        <div style="color: #64748b;">
+                            👤 {log['order']['user_name']} | 🍽️ {log['order']['menu']} | 
+                            📊 {log['order']['quantity']}개 | 💰 {log['order']['price']:,}원
+                        </div>
+                        {f"<div style='color: #94a3b8; font-size: 0.85rem; margin-top: 0.25rem;'>💬 {log['order']['special_request']}</div>" if log['order']['special_request'] else ""}
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    if st.button("🗑️", key=f"delete_{i}", help="이 주문 삭제"):
+                        if delete_log_entry(selected_month, log['timestamp']):
+                            st.success("✅ 삭제됨")
+                            st.rerun()
+                        else:
+                            st.error("❌ 실패")
+        
+        # 데이터프레임으로도 표시 (다운로드용)
+        st.write("### 📊 표 형태 보기")
+        df_data = []
+        for log in filtered_logs:
+            df_data.append({
+                "시간": datetime.datetime.fromisoformat(log['timestamp']).strftime("%m-%d %H:%M"),
+                "음식점": log['restaurant']['name'],
+                "방ID": log['room_id'][:8],
+                "주문자": log['order']['user_name'],
+                "메뉴": log['order']['menu'],
+                "수량": log['order']['quantity'],
+                "금액": f"{log['order']['price']:,}원",
+                "옵션": log['order']['beverage_option'] or "",
+                "요청사항": log['order']['special_request'] or ""
+            })
+        
+        df = pd.DataFrame(df_data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        # CSV 다운로드
+        csv = df.to_csv(index=False, encoding='utf-8-sig')
+        
+        # 파일명 생성 (필터 조건 반영)
+        filename_parts = [f"smio_orders_{selected_month}"]
+        if selected_restaurant != "전체":
+            filename_parts.append(selected_restaurant.replace("/", "_"))
+        if selected_room != "전체":
+            filename_parts.append(f"room_{selected_room}")
+        
+        filename = "_".join(filename_parts) + ".csv"
+        
+        st.download_button(
+            label="📥 CSV 다운로드",
+            data=csv,
+            file_name=filename,
+            mime="text/csv"
+        )
+    else:
+        st.info("📭 선택한 조건에 맞는 로그가 없습니다.")
+
+# 관리자 페이지 체크 (세션 기반)
+if st.session_state.get('admin_mode') and st.session_state.get('admin_authenticated'):
+    show_admin_page()
+    st.stop()
+
+# 세션 상태 초기화 및 방 데이터 동기화
+initialize_session_state()
+sync_room_data()

@@ -1,0 +1,31 @@
+# 개발 환경 파일들
+.history/
+.vscode/
+__pycache__/
+*.pyc
+*.pyo
+
+# 데이터 파일들 (로그, 방 정보)
+logs/
+rooms/
+
+# OS 생성 파일들
+.DS_Store
+Thumbs.db
+
+# Python 가상환경
+venv/
+env/
+.env
+
+# IDE 파일들
+*.swp
+*.swo
+*~
+
+# Chrome 드라이버 관련
+chromedriver*
+
+# 임시 파일들
+*.tmp
+*.log 
