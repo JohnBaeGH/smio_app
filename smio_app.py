@@ -59,16 +59,11 @@ def get_current_room_id():
     query_params = st.query_params
     return query_params.get('room_id', None)
 
+@st.cache_data(ttl=0)  # 캐시 비활성화
 def create_room_url(room_id):
     """방 ID로 공유 가능한 URL을 생성합니다."""
-    # BASE_URL 환경 변수가 있으면 사용, 없으면 기본값 사용
-    base_url = os.environ.get('BASE_URL', 'https://smio.up.railway.app')
-    
-    # 명시적으로 로컬 개발 환경인 경우만 localhost 사용
-    if 'STREAMLIT_DEV' in os.environ or os.environ.get('ENVIRONMENT') == 'local':
-        base_url = "http://localhost:8501"
-    
-    return f"{base_url}?room_id={room_id}"
+    # 강제로 배포 URL 사용 (Railway 환경)
+    return f"https://smioapp.up.railway.app?room_id={room_id}"
 
 # --- 로그 관리 함수 ---
 def get_log_file_path():
