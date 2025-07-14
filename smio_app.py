@@ -61,25 +61,12 @@ def get_current_room_id():
 
 def create_room_url(room_id):
     """방 ID로 공유 가능한 URL을 생성합니다."""
-    # 배포 환경 URL 감지 (여러 방법 시도)
-    base_url = None
+    # BASE_URL 환경 변수가 있으면 사용, 없으면 기본값 사용
+    base_url = os.environ.get('BASE_URL', 'https://smio.up.railway.app')
     
-    # 1. Railway 환경 변수들 확인
-    railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
-    railway_static = os.environ.get('RAILWAY_STATIC_URL')
-    
-    if railway_domain:
-        base_url = f"https://{railway_domain}"
-    elif railway_static:
-        base_url = railway_static
-    else:
-        # 2. 직접 배포 URL 확인 (알려진 경우)
-        if os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('RAILWAY_PROJECT_ID'):
-            # Railway 환경이지만 도메인을 찾지 못한 경우, 알려진 URL 사용
-            base_url = "https://smio.up.railway.app"
-        else:
-            # 3. 로컬 환경
-            base_url = "http://localhost:8501"
+    # 명시적으로 로컬 개발 환경인 경우만 localhost 사용
+    if 'STREAMLIT_DEV' in os.environ or os.environ.get('ENVIRONMENT') == 'local':
+        base_url = "http://localhost:8501"
     
     return f"{base_url}?room_id={room_id}"
 
