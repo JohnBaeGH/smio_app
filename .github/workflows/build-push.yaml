@@ -1,4 +1,4 @@
-2name: Build & Push to GHCR
+name: Build & Push to GHCR
 
 on:
   push:
