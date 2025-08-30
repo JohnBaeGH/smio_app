@@ -2,7 +2,7 @@ name: Build & Push to GHCR
 
 on:
   push:
-    branches: [ "main" ]     # 기본 브랜치가 master면 "master"로 변경
+    branches: [ "main" ]
   workflow_dispatch: {}
 
 jobs:
@@ -22,7 +22,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_TOKEN }}
 
-      # 👇 소문자 owner 파생 (bash 파라미터 확장)
       - name: Set lowercased owner
         run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
