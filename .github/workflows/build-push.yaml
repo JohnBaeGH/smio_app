@@ -1,9 +1,9 @@
-name: Build & Push to GHCR
+2name: Build & Push to GHCR
 
 on:
   push:
-    branches: [ "main" ]    # 기본 브랜치가 master면 "master"로 바꿔주세요
-  workflow_dispatch: {}     # 수동 실행 버튼 활성화
+    branches: [ "main" ]     # 기본 브랜치가 master면 "master"로 변경
+  workflow_dispatch: {}
 
 jobs:
   build:
@@ -22,9 +22,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_TOKEN }}
 
+      # 👇 소문자 owner 파생 (bash 파라미터 확장)
+      - name: Set lowercased owner
+        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
       - name: Build & Push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ toLower(github.repository_owner) }}/smio:latest
+          tags: ghcr.io/${{ env.OWNER_LC }}/smio:latest
